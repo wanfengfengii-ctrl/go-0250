@@ -134,6 +134,10 @@ type outcome struct {
 	serr    *ServiceError // non-nil when the command was rejected
 }
 
+// okCode is the response code recorded for a persisted success. Any other code
+// marks a persisted rejection whose replay must rebuild the original error.
+const okCode codes.Code = "OK"
+
 // run executes a write command with operation-level idempotency. It returns the
 // serialized JSON response on success or a *ServiceError on rejection.
 func (s *Service) run(ctx context.Context, opID string, req any, fn func(tx store.Tx) (*outcome, error)) ([]byte, error) {
@@ -142,7 +146,11 @@ func (s *Service) run(ctx context.Context, opID string, req any, fn func(tx stor
 	// Fast-path idempotency check before taking the write transaction.
 	if stored, ok, err := s.store.LoadOperationResult(ctx, opID); err == nil && ok {
 		if stored.RequestHash == hash {
-			return stored.Payload, nil
+			payload, serr := replayResult(stored)
+			if serr != nil {
+				return nil, serr
+			}
+			return payload, nil
 		}
 		return nil, Err(codes.OperationContentConflict)
 	}
@@ -150,11 +158,15 @@ func (s *Service) run(ctx context.Context, opID string, req any, fn func(tx stor
 	var out []byte
 	var outErr *ServiceError
 	err := s.store.Write(ctx, func(tx store.Tx) error {
-		if stored, ok, err := tx.LoadOperationResult(ctx, opID); err != nil {
+		stored, replayed, err := tx.LoadOperationResult(ctx, opID)
+		if err != nil {
 			return err
-		} else if ok {
+		}
+		if replayed {
 			if stored.RequestHash == hash {
-				out = append([]byte(nil), stored.Payload...)
+				rpayload, rerr := replayResult(stored)
+				out = rpayload
+				outErr = rerr
 				return nil
 			}
 			outErr = Err(codes.OperationContentConflict)
@@ -166,7 +178,7 @@ func (s *Service) run(ctx context.Context, opID string, req any, fn func(tx stor
 			return err
 		}
 		var payload []byte
-		code := codes.Code("OK")
+		code := okCode
 		if oc.serr != nil {
 			payload, _ = json.Marshal(oc.serr)
 			code = oc.serr.Code
@@ -194,6 +206,30 @@ func (s *Service) run(ctx context.Context, opID string, req any, fn func(tx stor
 		return nil, outErr
 	}
 	return out, nil
+}
+
+// replayResult reconstructs the response for an idempotent replay of an
+// operation whose result is already persisted. A recorded success returns its
+// payload unchanged; a recorded rejection is rebuilt into the original
+// *ServiceError so the replay keeps the first attempt's error code and state
+// instead of being mistaken for a success.
+func replayResult(stored store.OperationResult) ([]byte, *ServiceError) {
+	if stored.ResponseCode == string(okCode) {
+		return append([]byte(nil), stored.Payload...), nil
+	}
+	var serr ServiceError
+	if err := json.Unmarshal(stored.Payload, &serr); err != nil {
+		// A well-formed persisted rejection always decodes; fall back to the
+		// recorded code so a corrupt payload can never replay as a success.
+		return nil, Err(codes.Code(stored.ResponseCode))
+	}
+	if serr.Code == "" {
+		serr.Code = codes.Code(stored.ResponseCode)
+	}
+	if serr.Reasons == nil {
+		serr.Reasons = []Reason{}
+	}
+	return nil, &serr
 }
 
 // HashRequest returns the deterministic normalized digest of a request value.
