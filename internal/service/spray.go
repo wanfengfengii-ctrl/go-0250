@@ -120,14 +120,22 @@ func (s *Service) SubmitSprayCheckpoint(ctx context.Context, in SprayCheckpointR
 		if callErr != nil {
 			attempt.Status = acquisition.AttemptFailed
 			attempt.FailureCode = string(codes.InstrumentDisconnected)
-			_ = tx.SaveAttempt(ctx, attempt)
+			// The failure-status write must not be swallowed: if the context is
+			// already cancelled (client disconnect) the update fails and we must
+			// roll back the whole transaction, including the pending insert,
+			// rather than commit a stuck pending attempt that retry cannot handle.
+			if err := tx.SaveAttempt(ctx, attempt); err != nil {
+				return nil, err
+			}
 			return rejected(Err(codes.InstrumentDisconnected))
 		}
 		if res.Status != "ok" {
 			attempt.Status = acquisition.AttemptFailed
 			attempt.FailureCode = instrumentCode(res.Status)
 			attempt.ResponsePayload = res.Payload
-			_ = tx.SaveAttempt(ctx, attempt)
+			if err := tx.SaveAttempt(ctx, attempt); err != nil {
+				return nil, err
+			}
 			e := Err(codes.Code(instrumentCode(res.Status)))
 			e.TaskID = task.TaskID
 			e.StateRevision = task.StateRevision
