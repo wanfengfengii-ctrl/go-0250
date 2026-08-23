@@ -309,12 +309,25 @@ func (t *sqliteTx) LoadAllActiveTokens(ctx context.Context) ([]occupancy.Occupan
 
 // --- Acquisition ---
 
+// SaveStepRecord upserts a pressure step record. A completed (passed) level is
+// immutable: a later submission for the same (task, generation, phase, polarity,
+// ordinal) must not overwrite a frozen conclusion. A failed (not-yet-passed)
+// level is not completed, so a corrected reading that retries the same level is
+// allowed to replace the prior failed record; without this the retry's pass is
+// silently dropped and the task stays stuck on the stale failed reading.
 func (t *sqliteTx) SaveStepRecord(ctx context.Context, rec acquisition.StepRecord) error {
 	_, err := t.ex.ExecContext(ctx, `
 		INSERT INTO step_records(task_id, generation, phase, polarity, ordinal, actual_pa,
 			airflow_cc_per_sec, displacement_micron, operation_id, content_hash, passed)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(task_id, generation, phase, polarity, ordinal) DO NOTHING`,
+		ON CONFLICT(task_id, generation, phase, polarity, ordinal) DO UPDATE SET
+			actual_pa=excluded.actual_pa,
+			airflow_cc_per_sec=excluded.airflow_cc_per_sec,
+			displacement_micron=excluded.displacement_micron,
+			operation_id=excluded.operation_id,
+			content_hash=excluded.content_hash,
+			passed=excluded.passed
+		WHERE step_records.passed = 0`,
 		rec.TaskID, rec.Generation, rec.Phase, string(rec.Polarity), rec.Ordinal, rec.ActualPa,
 		rec.AirflowCCPerSec, rec.DisplacementMicron, rec.OperationID, rec.ContentHash, boolInt(rec.Passed))
 	return err
