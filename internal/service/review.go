@@ -82,7 +82,7 @@ func (s *Service) SubmitReview(ctx context.Context, in ReviewRequest) ([]byte, e
 			return rejected(e)
 		}
 
-		existing, err := tx.LoadReviews(ctx, in.TaskID)
+		existing, err := tx.LoadReviews(ctx, in.TaskID, int64(task.Generation))
 		if err != nil {
 			return nil, err
 		}
@@ -97,6 +97,7 @@ func (s *Service) SubmitReview(ctx context.Context, in ReviewRequest) ([]byte, e
 
 		review := verdict.Review{
 			TaskID:                in.TaskID,
+			Generation:            int64(task.Generation),
 			ReviewerID:            in.ReviewerID,
 			QualificationRevision: in.QualificationRevision,
 			VerdictHash:           in.VerdictHash,

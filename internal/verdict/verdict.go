@@ -54,9 +54,14 @@ const (
 )
 
 // Review is a single independent review seat. A natural person may occupy at
-// most one seat per task.
+// most one seat per task generation: a repair that increments the generation
+// frees the seats of prior generations. Their reviews are retained as
+// immutable audit history and never count toward the current generation's
+// conclusion, mirroring the generation scoping of evidence, step and spray
+// records.
 type Review struct {
 	TaskID                string
+	Generation            int64
 	ReviewerID            string
 	QualificationRevision string
 	VerdictHash           string

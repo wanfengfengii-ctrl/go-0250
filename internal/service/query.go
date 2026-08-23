@@ -128,7 +128,7 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (*Snapshot, error)
 			})
 		}
 	}
-	if reviews, err := s.store.LoadReviews(ctx, taskID); err == nil {
+	if reviews, err := s.store.LoadReviews(ctx, taskID, int64(task.Generation)); err == nil {
 		for _, r := range reviews {
 			snap.Reviews = append(snap.Reviews, ReviewView{
 				ReviewerID: r.ReviewerID, QualificationRevision: r.QualificationRevision, Decision: string(r.Decision),

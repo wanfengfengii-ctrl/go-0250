@@ -109,12 +109,13 @@ CREATE TABLE IF NOT EXISTS repair_generations (
 
 CREATE TABLE IF NOT EXISTS reviews (
 	task_id                TEXT NOT NULL,
+	generation             INTEGER NOT NULL,
 	reviewer_id            TEXT NOT NULL,
 	qualification_revision TEXT NOT NULL,
 	verdict_hash           TEXT NOT NULL,
 	decision               TEXT NOT NULL,
 	operation_id           TEXT NOT NULL,
-	PRIMARY KEY (task_id, reviewer_id)
+	PRIMARY KEY (task_id, generation, reviewer_id)
 );
 
 CREATE TABLE IF NOT EXISTS release_credentials (

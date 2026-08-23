@@ -51,7 +51,7 @@ type Querier interface {
 	LoadAttempts(ctx context.Context, taskID string) ([]acquisition.InstrumentAttempt, error)
 	LoadEvidence(ctx context.Context, taskID string) ([]verdict.DefectEvidence, error)
 	LoadRepairs(ctx context.Context, taskID string) ([]verdict.RepairGeneration, error)
-	LoadReviews(ctx context.Context, taskID string) ([]verdict.Review, error)
+	LoadReviews(ctx context.Context, taskID string, generation int64) ([]verdict.Review, error)
 	LoadCredential(ctx context.Context, taskID string) (verdict.ReleaseCredential, bool, error)
 	LoadOperationResult(ctx context.Context, operationID string) (OperationResult, bool, error)
 	LoadAllActiveTokens(ctx context.Context) ([]occupancy.OccupancyToken, error)

@@ -487,17 +487,22 @@ func (t *sqliteTx) LoadRepairs(ctx context.Context, taskID string) ([]verdict.Re
 
 func (t *sqliteTx) SaveReview(ctx context.Context, r verdict.Review) error {
 	_, err := t.ex.ExecContext(ctx, `
-		INSERT INTO reviews(task_id, reviewer_id, qualification_revision, verdict_hash, decision, operation_id)
-		VALUES(?,?,?,?,?,?)
-		ON CONFLICT(task_id, reviewer_id) DO NOTHING`,
-		r.TaskID, r.ReviewerID, r.QualificationRevision, r.VerdictHash, string(r.Decision), r.OperationID)
+		INSERT INTO reviews(task_id, generation, reviewer_id, qualification_revision, verdict_hash, decision, operation_id)
+		VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(task_id, generation, reviewer_id) DO NOTHING`,
+		r.TaskID, r.Generation, r.ReviewerID, r.QualificationRevision, r.VerdictHash, string(r.Decision), r.OperationID)
 	return err
 }
 
-func (t *sqliteTx) LoadReviews(ctx context.Context, taskID string) ([]verdict.Review, error) {
+// LoadReviews returns the review seats bound to the given generation. Prior
+// generations' reviews are retained as immutable audit history but are never
+// counted toward the current generation's conclusion: a repair that increments
+// the generation frees the seats of earlier generations, mirroring the
+// generation scoping of evidence, step and spray records.
+func (t *sqliteTx) LoadReviews(ctx context.Context, taskID string, generation int64) ([]verdict.Review, error) {
 	rows, err := t.ex.QueryContext(ctx, `
 		SELECT reviewer_id, qualification_revision, verdict_hash, decision, operation_id
-		FROM reviews WHERE task_id=? ORDER BY reviewer_id`, taskID)
+		FROM reviews WHERE task_id=? AND generation=? ORDER BY reviewer_id`, taskID, generation)
 	if err != nil {
 		return nil, err
 	}
@@ -510,6 +515,7 @@ func (t *sqliteTx) LoadReviews(ctx context.Context, taskID string) ([]verdict.Re
 			return nil, err
 		}
 		r.TaskID = taskID
+		r.Generation = generation
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -619,9 +625,9 @@ func (s *sqliteStore) LoadRepairs(ctx context.Context, taskID string) ([]verdict
 	return tx.LoadRepairs(ctx, taskID)
 }
 
-func (s *sqliteStore) LoadReviews(ctx context.Context, taskID string) ([]verdict.Review, error) {
+func (s *sqliteStore) LoadReviews(ctx context.Context, taskID string, generation int64) ([]verdict.Review, error) {
 	tx := s.readTx()
-	return tx.LoadReviews(ctx, taskID)
+	return tx.LoadReviews(ctx, taskID, generation)
 }
 
 func (s *sqliteStore) LoadCredential(ctx context.Context, taskID string) (verdict.ReleaseCredential, bool, error) {
