@@ -157,6 +157,18 @@ func (s *Service) SubmitPressureStep(ctx context.Context, in PressureStepRequest
 		if err != nil {
 			return rejected(Err(codes.ArithmeticError))
 		}
+		// A reading outside the locked tolerance is a failed level. Like the
+		// spray tolerance check, it is rejected before any step record is
+		// written and before the phase fence can advance: a non-passing level
+		// must never open the next level or reach the terminal. Persisting it
+		// would also pin the step (step records are immutable by key), so the
+		// operator must resubmit a compliant reading under a new operation id.
+		if !passed {
+			e := Err(codes.InvalidRequest).WithReason(codes.InvalidRequest, "actual_pa", itoa(int(in.ActualPa)))
+			e.TaskID = task.TaskID
+			e.StateRevision = task.StateRevision
+			return rejected(e)
+		}
 
 		rec := acquisition.StepRecord{
 			TaskID:             in.TaskID,
