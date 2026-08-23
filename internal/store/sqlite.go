@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/windowproof/fenestration/internal/acquisition"
 	"github.com/windowproof/fenestration/internal/catalog"
 	"github.com/windowproof/fenestration/internal/inspection"
@@ -650,11 +652,14 @@ func boolInt(b bool) int {
 	return 0
 }
 
-var idCounter uint64
-
+// newTokenID returns a globally unique token id. It must not depend on
+// process-local state: a service restart resumes against occupancy rows written
+// by a previous process, and a counter that resets to zero would regenerate
+// colliding ids (tok-1, tok-2, ...), violating the token_id primary key and
+// turning every fresh lock into a STORE_UNAVAILABLE rollback. A random UUID is
+// unique across processes and restarts without coordination.
 func newTokenID() string {
-	idCounter++
-	return fmt.Sprintf("tok-%d", idCounter)
+	return "tok-" + uuid.NewString()
 }
 
 // nowMillis returns the current wall-clock time in milliseconds. It is a
