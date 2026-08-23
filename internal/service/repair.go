@@ -188,7 +188,16 @@ func (s *Service) StartRepair(ctx context.Context, in RepairRequest) ([]byte, er
 		task.Generation = inspection.Generation(newGen)
 		task.State = earliestPhase(in.AffectedSteps, in.AffectedCheckpoints)
 		task.CurrentPhase = phaseOfState(task.State)
-		task.SprayStartedAt = 0
+		// A repair that reopens the spray phase must establish a fresh time
+		// window for the reopened checkpoints. Re-anchoring SprayStartedAt to
+		// the current tick keeps elapsed-from-anchor within the frozen offsets;
+		// leaving it at zero would make every re-submission compare against a
+		// wall-clock anchor and be rejected as timed out. Other phases leave the
+		// anchor untouched so advancePhase re-anchors it on the air->water
+		// transition.
+		if task.State == inspection.StateWaterSpray {
+			task.SprayStartedAt = s.clock.NowMillis()
+		}
 		task.StateRevision++
 		task.UpdatedAt = s.clock.NowMillis()
 		if err := tx.SaveTask(ctx, task); err != nil {
