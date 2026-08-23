@@ -261,9 +261,16 @@ func (t *sqliteTx) ReleaseToken(ctx context.Context, taskID string, kind occupan
 }
 
 func (t *sqliteTx) ReleaseAllTokens(ctx context.Context, taskID string, generation int64) error {
+	// The terminal fence releases every active token owned by the task, across
+	// all generations. StartRepair increments the task generation without
+	// re-acquiring the one-shot resource tokens, so the held tokens still carry
+	// the generation at which they were acquired; filtering by the current
+	// generation would leave the older-generation tokens active and the
+	// specimen/chamber/measurement-points stranded as occupied.
+	_ = generation
 	_, err := t.ex.ExecContext(ctx,
-		`UPDATE occupancy_tokens SET active=0, released_at=? WHERE task_id=? AND generation=? AND active=1`,
-		nowMillis(), taskID, generation)
+		`UPDATE occupancy_tokens SET active=0, released_at=? WHERE task_id=? AND active=1`,
+		nowMillis(), taskID)
 	return err
 }
 
