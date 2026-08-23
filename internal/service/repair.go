@@ -121,6 +121,13 @@ func (s *Service) StartRepair(ctx context.Context, in RepairRequest) ([]byte, er
 		if task.State.IsTerminal() {
 			return rejected(terminalError(task))
 		}
+		// A repair reopens affected pressure steps and spray checkpoints, which
+		// only exist once the task has been locked and installed. Rejecting it
+		// before that prevents an unlocked task from being pushed into a spray
+		// phase without a locked catalog, chamber or measurement points.
+		if task.State == inspection.StatePendingLock || task.State == inspection.StateInstalling {
+			return rejected(Err(codes.InvalidState))
+		}
 		if in.ExpectedRevision != task.StateRevision {
 			return rejected(Err(codes.StaleRevision))
 		}
