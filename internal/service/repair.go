@@ -146,12 +146,20 @@ func (s *Service) StartRepair(ctx context.Context, in RepairRequest) ([]byte, er
 		oldGen := int64(task.Generation)
 		newGen := oldGen + 1
 
-		// Copy step records to the new generation.
+		// Copy unaffected step records to the new generation. Affected steps are
+		// dropped so they must be re-collected, while unaffected results survive.
+		affectedSteps := map[string]bool{}
+		for _, k := range in.AffectedSteps {
+			affectedSteps[k] = true
+		}
 		oldSteps, err := tx.LoadStepRecords(ctx, in.TaskID, oldGen)
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range oldSteps {
+			if affectedSteps[stepKey(r.Phase, string(r.Polarity), r.Ordinal)] {
+				continue
+			}
 			r.Generation = newGen
 			if err := tx.SaveStepRecord(ctx, r); err != nil {
 				return nil, err
