@@ -1,6 +1,6 @@
-# windowproof-fenestration-triple-test
+基于 Go 实现的建筑门窗三性能联检 Web 项目，一款后端服务，完成气密、水密与抗风压试验采集、复核及放行。
 
-本 Git 项目来自模型完成任务后的 workspace，不包含嵌套 .git 记录或本地构建产物。
+# windowproof-fenestration-triple-test
 
 ## 本地构建与测试
 
